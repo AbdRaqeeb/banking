@@ -21,7 +21,7 @@ fn main() -> Result<()> {
         })?;
 
 
-    bank::run(&connection)
+    bank::run(connection)
         .with_context(||format!("Application error"))?;
     Ok(())
 }

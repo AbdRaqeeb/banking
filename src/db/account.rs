@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params, Result};
+use rusqlite::{Connection, params, Result, Transaction};
 
 pub struct Account {
     user_id: u32,
@@ -42,6 +42,16 @@ pub fn get_account(conn: &Connection, account_number: &u32) -> Option<Result<Acc
     account_iter.next()
 }
 
+pub fn get_account_with_transaction(tx: &Transaction, account_number: &u32) -> Option<Result<Account>> {
+    let mut statement = tx.prepare(
+        "SELECT user_id, account_number, balance FROM accounts WHERE account_number = ?"
+    ).ok()?;
+
+    let mut account_iter = statement.query_map([account_number], account_map).ok()?;
+
+    account_iter.next()
+}
+
 pub fn create_account(conn: &Connection, account: &Account) -> Option<Result<Account>> {
     let mut statement = conn.prepare(
         "
@@ -62,16 +72,28 @@ pub fn create_account(conn: &Connection, account: &Account) -> Option<Result<Acc
 pub fn update_account(
     conn: &Connection,
     account_number: &u32,
-    balance: &u32,
     value: &u32,
 ) -> Option<Result<Account>> {
-    let new_balance = *balance + *value;
 
     let mut statement = conn.prepare(
         "UPDATE accounts SET balance = ? WHERE account_number = ?"
     ).ok()?;
 
-    statement.execute(params![new_balance, account_number]).ok()?;
+    statement.execute(params![value, account_number]).ok()?;
 
     get_account(conn, account_number)
+}
+
+pub fn update_account_with_transaction(
+    tx: &Transaction,
+    account_number: &u32,
+    value: &u32,
+) -> Result<()> {
+    let mut statement = tx.prepare(
+        "UPDATE accounts SET balance = ? WHERE account_number = ?"
+    )?;
+
+    statement.execute(params![value, account_number])?;
+
+    Ok(())
 }
