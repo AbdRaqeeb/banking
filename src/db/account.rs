@@ -15,12 +15,12 @@ impl Account {
         }
     }
 
-    pub fn get_account_number(&self) -> u32 {
-        self.account_number
+    pub fn get_account_number(&self) -> &u32 {
+        &self.account_number
     }
 
-    pub fn get_account_balance(&self) -> u32 {
-        self.balance
+    pub fn get_account_balance(&self) -> &u32 {
+        &self.balance
     }
 }
 

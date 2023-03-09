@@ -5,7 +5,7 @@ use crate::api;
 use crate::db::account::Account;
 
 pub fn create_account(conn: &Connection) -> Result<String> {
-    crate::api::print_message("Please enter your email")?;
+    crate::api::print_message("\nPlease enter your email\n")?;
 
     let mut email = String::new();
 
@@ -26,7 +26,7 @@ pub fn create_account(conn: &Connection) -> Result<String> {
     let account = Account::new(user.get_id(), account_number);
 
     if let Some(Ok(account)) = db::account::create_account(conn, &account) {
-        api::print_message(format!("Dear {}\nYour account number is {}", user.get_email(), account.get_account_number()).as_str())?;
+        api::print_message(format!("\nDear {}\nYour account number is {}", user.get_email(), account.get_account_number()).as_str())?;
     } else {
         api::print_message("Error creating an account")?;
     };
@@ -46,9 +46,18 @@ pub fn deposit_money(conn: &Connection) -> Result<String> {
 
     log::info!("[API] [DEPOSIT] updating account balance");
 
-    let new_balance = &account.get_account_balance() + &amount;
+    let new_balance = account.get_account_balance() + &amount;
 
-    if let Some(Ok(account)) = db::account::update_account(conn, &account.get_account_number(), &new_balance) {
+    if let Some(Ok(account)) = db::account::update_account(conn, account.get_account_number(), &new_balance) {
+        let transaction = db::transaction::Transaction::new(
+            None,
+            Some(&account.get_account_number()),
+            &new_balance,
+            String::from("deposit"),
+        );
+
+        db::transaction::create_deposit_transaction(conn, transaction)?;
+
         api::print_message(
             format!(
                 "\nThe money was deposited successfully.\n\nThe account details below:\n\nAccount Number: {}\nBalance {}",
@@ -86,7 +95,7 @@ pub fn withdraw_from_account(conn: &Connection) -> Result<String> {
 
     log::info!("[API] [WITHDRAW_FROM_ACCOUNT] updating account balance");
 
-    if &account.get_account_balance() < &amount {
+    if account.get_account_balance() < &amount {
         log::info!("[API] [WITHDRAW_FROM_ACCOUNT] insufficient funds");
 
         api::print_message("\nInsufficient funds\n")?;
@@ -94,9 +103,18 @@ pub fn withdraw_from_account(conn: &Connection) -> Result<String> {
         return api::continue_transaction();
     }
 
-    let new_balance = &account.get_account_balance() - &amount;
+    let new_balance = account.get_account_balance() - &amount;
 
-    if let Some(Ok(account)) = db::account::update_account(conn, &account.get_account_number(), &new_balance) {
+    if let Some(Ok(account)) = db::account::update_account(conn, account.get_account_number(), &new_balance) {
+        let transaction = db::transaction::Transaction::new(
+            Some(account.get_account_number()),
+            None,
+            &amount,
+            String::from("withdrawal"),
+        );
+
+        db::transaction::create_withdraw_transaction(conn, transaction)?;
+
         api::print_message(
             format!(
                 "\nThe withdrawal was successful.\n\nThe account details below:\n\nAccount Number: {}\nBalance {}",
@@ -129,7 +147,7 @@ pub fn transfer_money(conn: &mut Connection) -> Result<String> {
     let to_account = get_account_with_transaction(&tx, "\nPlease enter the recipient account number").expect("\n");
 
 
-    if &from_account.get_account_balance() < &amount {
+    if from_account.get_account_balance() < &amount {
         log::info!("[API] [TRANSFER_MONEY] insufficient funds");
 
         api::print_message("\nInsufficient funds\n")?;
@@ -139,21 +157,31 @@ pub fn transfer_money(conn: &mut Connection) -> Result<String> {
 
     log::info!("[API] [TRANSFER_MONEY] deducting amount from the from_account");
 
-    let from_account_new_balance = &from_account.get_account_balance() - &amount;
+    let from_account_new_balance = from_account.get_account_balance() - &amount;
 
-    db::account::update_account_with_transaction(&tx, &from_account.get_account_number(), &from_account_new_balance)?;
+    db::account::update_account_with_transaction(&tx, from_account.get_account_number(), &from_account_new_balance)?;
 
-    let to_account_new_balance = &to_account.get_account_balance() + &amount;
+    let to_account_new_balance = to_account.get_account_balance() + &amount;
 
     db::account::update_account_with_transaction(&tx, &to_account.get_account_number(), &to_account_new_balance)?;
 
-    let from_account = db::account::get_account_with_transaction(&tx, &from_account.get_account_number())
+    let from_account = db::account::get_account_with_transaction(&tx, from_account.get_account_number())
         .expect("Error during transfer!!!")
         .expect("Error during transfer!!!");
 
-    let to_account = db::account::get_account_with_transaction(&tx, &to_account.get_account_number())
+    let to_account = db::account::get_account_with_transaction(&tx, to_account.get_account_number())
         .expect("Error during transfer!!!")
         .expect("Error during transfer!!!");
+
+
+    let transaction = db::transaction::Transaction::new(
+        Some(from_account.get_account_number()),
+        Some(to_account.get_account_number()),
+        &amount,
+        String::from("transfer"),
+    );
+
+    db::transaction::create_transfer_transaction(&tx, transaction)?;
 
     tx.commit()?;
 
